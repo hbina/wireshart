@@ -47,7 +47,7 @@ fn main() {
                                 parsed_packet.dst_ip,
                                 parsed_packet.protocol,
                                 packet.origlen,
-                                parsed_packet.info
+                                format!("{}", parsed_packet.info)
                             );
                         }
                     }
