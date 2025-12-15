@@ -1,11 +1,90 @@
+use pcap_parser::traits::PcapReaderIterator;
+use pcap_parser::{PcapError, PcapNGReader};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-use pnet::packet::ip::{IpNextHeaderProtocol, IpNextHeaderProtocols};
+use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::ipv6::Ipv6Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::udp::UdpPacket;
 use pnet::packet::Packet;
 use std::fmt::{Display, Formatter};
+use std::fs::File;
+use std::io::{Read, Seek};
+use std::sync::{Arc, Mutex};
+
+#[derive(Debug, Clone)]
+pub struct PcapPointer {
+    pub pcap_offset: usize,
+    pub pcap_len: usize,
+}
+
+pub struct PcapPointerIterator {
+    pcap_reader: PcapNGReader<std::io::BufReader<std::fs::File>>,
+    pcap_offset: usize,
+}
+
+impl PcapPointerIterator {
+    pub fn new(file_path: String) -> Self {
+        Self {
+            pcap_reader: PcapNGReader::new(
+                64 * 1024 * 1024,
+                std::io::BufReader::new(
+                    std::fs::OpenOptions::new()
+                        .read(true)
+                        .open(&file_path)
+                        .unwrap(),
+                ),
+            )
+            .unwrap(),
+            pcap_offset: 0,
+        }
+    }
+}
+
+impl Iterator for PcapPointerIterator {
+    type Item = PcapPointer;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.pcap_reader.next() {
+                Ok((current_offset, block)) => {
+                    let res = match block {
+                        pcap_parser::PcapBlockOwned::NG(ng) => match ng {
+                            pcap_parser::Block::EnhancedPacket(b) => Some(PcapPointer {
+                                pcap_offset: self.pcap_offset + 4 + 4 + 4 + 4 + 4 + 4 + 4,
+                                pcap_len: b.data.len(),
+                            }),
+                            pcap_parser::Block::SimplePacket(b) => Some(PcapPointer {
+                                pcap_offset: self.pcap_offset,
+                                pcap_len: b.data.len(),
+                            }),
+                            _ => None,
+                        },
+                        pcap_parser::PcapBlockOwned::Legacy(b) => Some(PcapPointer {
+                            pcap_offset: self.pcap_offset,
+                            pcap_len: b.data.len(),
+                        }),
+                        _ => None,
+                    };
+
+                    self.pcap_reader.consume(current_offset);
+                    self.pcap_offset += current_offset;
+
+                    if let Some(res) = res {
+                        return Some(res);
+                    }
+                }
+                Err(PcapError::Eof) => break,
+                Err(PcapError::Incomplete(_)) => {
+                    self.pcap_reader.refill().unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+
+        return None;
+    }
+}
 
 #[derive(Debug)]
 pub struct UdpPacketInfo {
@@ -152,4 +231,19 @@ pub fn parse_packet(data: &[u8]) -> Option<PcapPacket> {
         info,
         len,
     })
+}
+
+pub fn parse_from_pcap_pointer(
+    pcap_pointer: &PcapPointer,
+    pcap_file: &Arc<Mutex<File>>,
+) -> Option<PcapPacket> {
+    let mut buffer = vec![0; pcap_pointer.pcap_len];
+    {
+        let mut reader = pcap_file.lock().unwrap();
+        reader
+            .seek(std::io::SeekFrom::Start(pcap_pointer.pcap_offset as u64))
+            .unwrap();
+        reader.read_exact(&mut buffer).unwrap();
+    }
+    parse_packet(&buffer)
 }
