@@ -47,7 +47,7 @@ impl Iterator for PcapPointerIterator {
                     let res = match block {
                         pcap_parser::PcapBlockOwned::NG(ng) => match ng {
                             pcap_parser::Block::EnhancedPacket(b) => Some(PcapPointer {
-                                pcap_offset: self.pcap_offset,
+                                pcap_offset: self.pcap_offset + 4 + 4 + 4 + 4 + 4 + 4 + 4,
                                 pcap_len: b.data.len(),
                             }),
                             pcap_parser::Block::SimplePacket(b) => Some(PcapPointer {
