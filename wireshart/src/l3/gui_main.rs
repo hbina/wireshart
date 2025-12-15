@@ -1,5 +1,9 @@
 use std::fs::File;
 use std::sync::{Arc, Mutex};
+use iced::futures::channel::mpsc;
+use iced::futures::{SinkExt, Stream};
+use iced::stream::try_channel;
+use pcap_parser_lib::{PcapPointer, PcapPointerIterator};
 
 const SCROLLABLE_ID: &str = "scrollable";
 
@@ -50,7 +54,7 @@ impl MainGui {
 
     pub fn start(&mut self) -> iced::Task<Result<pcap_parser_lib::PcapPointer, String>> {
         let (task, _) =
-            iced::Task::stream(pcap_parser_lib::process_pcap_gui(self.pcap_path.clone())).abortable();
+            iced::Task::stream(process_pcap_gui(self.pcap_path.clone())).abortable();
         task
     }
 
@@ -105,4 +109,16 @@ impl Default for MainGui {
             pcap_file: None,
         }
     }
+}
+
+fn process_pcap_gui(file_path: String) -> impl Stream<Item = Result<PcapPointer, String>> {
+    try_channel(1, move |mut output: mpsc::Sender<PcapPointer>| async move {
+        for pcap in PcapPointerIterator::new(file_path) {
+            if output.send(pcap).await.is_err() {
+                break;
+            }
+        }
+
+        Ok(())
+    })
 }

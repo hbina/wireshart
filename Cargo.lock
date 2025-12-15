@@ -2281,7 +2281,6 @@ name = "pcap-parser-lib"
 version = "0.1.0"
 dependencies = [
  "etherparse",
- "iced",
  "insta",
  "pcap-parser",
 ]

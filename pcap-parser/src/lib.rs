@@ -1,9 +1,3 @@
-#[cfg(feature = "gui")]
-use iced::futures::channel::mpsc;
-#[cfg(feature = "gui")]
-use iced::futures::{SinkExt, Stream};
-#[cfg(feature = "gui")]
-use iced::stream::try_channel;
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::{PcapError, PcapNGReader};
 
@@ -79,15 +73,4 @@ impl Iterator for PcapPointerIterator {
 
         return None;
     }
-}
-
-#[cfg(feature = "gui")]
-pub fn process_pcap_gui(file_path: String) -> impl Stream<Item = Result<PcapPointer, String>> {
-    try_channel(1, move |mut output: mpsc::Sender<PcapPointer>| async move {
-        for pcap in PcapPointerIterator::new(file_path) {
-            output.send(pcap).await.unwrap();
-        }
-
-        Ok(())
-    })
 }

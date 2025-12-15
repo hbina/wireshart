@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.14.0", features = ["tokio"] }
-pcap-parser-lib = { path = "../pcap-parser", features = ["gui"] }
+pcap-parser-lib = { path = "../pcap-parser" }
 clap = { version = "4.0", features = ["derive"] }
 memmap2 = "0.9.5"
 etherparse = "0.16.0"
