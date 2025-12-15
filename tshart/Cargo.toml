@@ -1,0 +1,12 @@
+[package]
+name = "tshart-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pcap-parser-lib = { path = "../pcap-parser" }
+clap = { version = "4.0", features = ["derive"] }
+
+[[bin]]
+name = "tshart"
+path = "src/main.rs"

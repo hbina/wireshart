@@ -1,0 +1,19 @@
+[package]
+name = "pcap-parser-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pcap-parser = "0.17.0"
+etherparse = "0.16.0"
+iced = { version = "0.14.0", optional = true }
+
+[features]
+gui = ["dep:iced"]
+
+[dev-dependencies]
+insta = "1.39.0"
+
+[[test]]
+name = "integration_test"
+harness = true
