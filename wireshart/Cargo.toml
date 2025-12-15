@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.14.0", features = ["tokio"] }
-pcap-parser = "0.17.0"
+pcap-parser = "0.15.0"
 clap = { version = "4.0", features = ["derive"] }
-etherparse = "0.19.0"
+packet-parser = { path = "../packet-parser" }
 
 [[bin]]
 name = "wireshart"

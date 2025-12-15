@@ -1,12 +1,6 @@
 use clap::Parser;
 use pcap_parser::traits::PcapReaderIterator;
 use pcap_parser::{PcapError, PcapNGReader};
-use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
-use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::ipv6::Ipv6Packet;
-use pnet::packet::tcp::TcpPacket;
-use pnet::packet::udp::UdpPacket;
-use pnet::packet::Packet;
 use std::fs::File;
 use std::io::BufReader;
 use std::time::SystemTime;
@@ -44,66 +38,18 @@ fn main() {
                             .duration_since(first_packet_time.unwrap())
                             .unwrap();
 
-                        let data = packet.data;
-                        let ethernet_packet = EthernetPacket::new(&data).unwrap();
-                        let (mut src_ip, mut dst_ip, mut protocol, mut info) =
-                            (String::new(), String::new(), String::new(), String::new());
-                        match ethernet_packet.get_ethertype() {
-                            EtherTypes::Ipv4 => {
-                                let ipv4_packet =
-                                    Ipv4Packet::new(ethernet_packet.payload()).unwrap();
-                                src_ip = ipv4_packet.get_source().to_string();
-                                dst_ip = ipv4_packet.get_destination().to_string();
-                                protocol = ipv4_packet
-                                    .get_next_level_protocol()
-                                    .to_string()
-                                    .to_uppercase();
-                                match protocol.as_str() {
-                                    "TCP" => {
-                                        let tcp_packet =
-                                            TcpPacket::new(ipv4_packet.payload()).unwrap();
-                                        info = format!(
-                                            "{} → {} Len={}",
-                                            tcp_packet.get_source(),
-                                            tcp_packet.get_destination(),
-                                            ipv4_packet.payload().len()
-                                                - tcp_packet.get_data_offset() as usize * 4
-                                        );
-                                    }
-                                    "UDP" => {
-                                        let udp_packet =
-                                            UdpPacket::new(ipv4_packet.payload()).unwrap();
-                                        info = format!(
-                                            "{} → {} Len={}",
-                                            udp_packet.get_source(),
-                                            udp_packet.get_destination(),
-                                            udp_packet.get_length() - 8
-                                        );
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            EtherTypes::Ipv6 => {
-                                let ipv6_packet =
-                                    Ipv6Packet::new(ethernet_packet.payload()).unwrap();
-                                src_ip = ipv6_packet.get_source().to_string();
-                                dst_ip = ipv6_packet.get_destination().to_string();
-                                protocol = ipv6_packet.get_next_header().to_string().to_uppercase();
-                                // Similar parsing for TCP/UDP over IPv6 can be added here
-                            }
-                            _ => {}
+                        if let Some(parsed_packet) = packet_parser::parse_packet(packet.data) {
+                            println!(
+                                "{:>5} {:>10.6} {} → {} {} {} {}",
+                                packet_num,
+                                time_since_first.as_secs_f64(),
+                                parsed_packet.src_ip,
+                                parsed_packet.dst_ip,
+                                parsed_packet.protocol,
+                                packet.origlen,
+                                parsed_packet.info
+                            );
                         }
-
-                        println!(
-                            "{:>5} {:>10.6} {} → {} {} {} {}",
-                            packet_num,
-                            time_since_first.as_secs_f64(),
-                            src_ip,
-                            dst_ip,
-                            protocol,
-                            packet.origlen,
-                            info
-                        );
                     }
                     _ => {}
                 }
