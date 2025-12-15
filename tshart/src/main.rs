@@ -1,8 +1,7 @@
 use clap::Parser;
-use pcap_parser::traits::PcapReaderIterator;
-use pcap_parser::{PcapError, PcapNGReader};
+use packet_parser::{PcapPointer, PcapPointerIterator};
 use std::fs::File;
-use std::io::BufReader;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 #[derive(Parser, Debug)]
@@ -15,51 +14,36 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    let file = File::open(args.pcap_path).unwrap();
-    let reader = BufReader::new(file);
-    let mut pcap_reader = PcapNGReader::new(1024 * 1024, reader).unwrap();
+    let pcap_file = Arc::new(Mutex::new(File::open(&args.pcap_path).unwrap()));
+    let iterator = PcapPointerIterator::new(args.pcap_path);
 
     let mut packet_num = 0;
     let mut first_packet_time: Option<SystemTime> = None;
 
-    loop {
-        match pcap_reader.next() {
-            Ok((offset, block)) => {
-                match block {
-                    pcap_parser::PcapBlockOwned::NG(pcap_parser::Block::EnhancedPacket(packet)) => {
-                        packet_num += 1;
-                        let timestamp = (packet.ts_high as u64) << 32 | packet.ts_low as u64;
-                        let system_time = SystemTime::UNIX_EPOCH
-                            + std::time::Duration::from_micros(timestamp.into());
-                        if first_packet_time.is_none() {
-                            first_packet_time = Some(system_time);
-                        }
-                        let time_since_first = system_time
-                            .duration_since(first_packet_time.unwrap())
-                            .unwrap();
+    for pcap_pointer in iterator {
+        packet_num += 1;
 
-                        if let Some(parsed_packet) = packet_parser::parse_packet(packet.data) {
-                            println!(
-                                "{:>5} {:>10.6} {} → {} {} {} {}",
-                                packet_num,
-                                time_since_first.as_secs_f64(),
-                                parsed_packet.src_ip,
-                                parsed_packet.dst_ip,
-                                parsed_packet.protocol,
-                                packet.origlen,
-                                format!("{}", parsed_packet.info)
-                            );
-                        }
-                    }
-                    _ => {}
-                }
-                pcap_reader.consume(offset);
-            }
-            Err(PcapError::Eof) => break,
-            Err(PcapError::Incomplete(_)) => {
-                pcap_reader.refill().unwrap();
-            }
-            Err(e) => panic!("Error reading pcap file: {:?}", e),
+        if first_packet_time.is_none() {
+            first_packet_time = Some(pcap_pointer.timestamp);
+        }
+        let time_since_first = pcap_pointer
+            .timestamp
+            .duration_since(first_packet_time.unwrap())
+            .unwrap();
+
+        if let Some(parsed_packet) =
+            packet_parser::parse_from_pcap_pointer(&pcap_pointer, &pcap_file)
+        {
+            println!(
+                "{:>5} {:>10.6} {} → {} {} {} {}",
+                packet_num,
+                time_since_first.as_secs_f64(),
+                parsed_packet.src_ip,
+                parsed_packet.dst_ip,
+                parsed_packet.protocol,
+                parsed_packet.len,
+                format!("{}", parsed_packet.info)
+            );
         }
     }
 }

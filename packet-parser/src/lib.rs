@@ -11,11 +11,13 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
 pub struct PcapPointer {
     pub pcap_offset: usize,
     pub pcap_len: usize,
+    pub timestamp: SystemTime,
 }
 
 pub struct PcapPointerIterator {
@@ -53,16 +55,23 @@ impl Iterator for PcapPointerIterator {
                             pcap_parser::Block::EnhancedPacket(b) => Some(PcapPointer {
                                 pcap_offset: self.pcap_offset + 4 + 4 + 4 + 4 + 4 + 4 + 4,
                                 pcap_len: b.data.len(),
+                                timestamp: SystemTime::UNIX_EPOCH
+                                    + std::time::Duration::from_micros(
+                                        (b.ts_high as u64) << 32 | b.ts_low as u64,
+                                    ),
                             }),
                             pcap_parser::Block::SimplePacket(b) => Some(PcapPointer {
                                 pcap_offset: self.pcap_offset,
                                 pcap_len: b.data.len(),
+                                timestamp: SystemTime::now(), // Simple packets don't have a timestamp
                             }),
                             _ => None,
                         },
                         pcap_parser::PcapBlockOwned::Legacy(b) => Some(PcapPointer {
                             pcap_offset: self.pcap_offset,
                             pcap_len: b.data.len(),
+                            timestamp: SystemTime::UNIX_EPOCH
+                                + std::time::Duration::new(b.ts_sec as u64, b.ts_usec),
                         }),
                         _ => None,
                     };
