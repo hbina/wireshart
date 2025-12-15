@@ -1,7 +1,7 @@
 #[derive(Debug, Clone)]
 pub enum MainGuiMessage {
     Start,
-    NewRow(Result<pcap_parser_lib::PcapPointer, String>),
+    NewRow(Result<crate::l3::gui_main::PcapPointer, String>),
     Expand(usize),
     Collapse(usize),
 }

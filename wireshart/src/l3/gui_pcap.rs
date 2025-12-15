@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 fn create_pcap_block_widget_collapsed<'a>(
     idx: usize,
-    r: &pcap_parser_lib::PcapPointer,
+    r: &super::gui_main::PcapPointer,
 ) -> iced::Element<'a, crate::l2::core::MainGuiMessage> {
     iced::Element::new(iced::widget::column![
         iced::widget::button("Expand").on_press(crate::l2::core::MainGuiMessage::Expand(idx)),
@@ -14,7 +14,7 @@ fn create_pcap_block_widget_collapsed<'a>(
 
 fn create_pcap_block_widget_expanded<'a>(
     idx: usize,
-    r: &pcap_parser_lib::PcapPointer,
+    r: &super::gui_main::PcapPointer,
     pcap_file: &Arc<Mutex<File>>,
 ) -> iced::Element<'a, crate::l2::core::MainGuiMessage> {
     let mut buffer = vec![0; r.pcap_len];
@@ -98,12 +98,12 @@ fn create_pcap_block_widget_expanded<'a>(
 pub fn create_pcap_block_widget<'a>(
     idx: usize,
     expanded: bool,
-    r: &pcap_parser_lib::PcapPointer,
+    r: &super::gui_main::PcapPointer,
     pcap_file: &Arc<Mutex<File>>,
 ) -> iced::Element<'a, crate::l2::core::MainGuiMessage> {
     if expanded {
-        return create_pcap_block_widget_expanded(idx, r, pcap_file);
+        create_pcap_block_widget_expanded(idx, r, pcap_file)
     } else {
-        return create_pcap_block_widget_collapsed(idx, r);
+        create_pcap_block_widget_collapsed(idx, r)
     }
 }

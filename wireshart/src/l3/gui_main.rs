@@ -1,16 +1,91 @@
-use std::fs::File;
-use std::sync::{Arc, Mutex};
 use iced::futures::channel::mpsc;
 use iced::futures::{SinkExt, Stream};
 use iced::stream::try_channel;
-use pcap_parser_lib::{PcapPointer, PcapPointerIterator};
+use pcap_parser::traits::PcapReaderIterator;
+use pcap_parser::{PcapError, PcapNGReader};
+use std::fs::File;
+use std::sync::{Arc, Mutex};
 
 const SCROLLABLE_ID: &str = "scrollable";
+
+#[derive(Debug, Clone)]
+pub struct PcapPointer {
+    pub pcap_offset: usize,
+    pub pcap_len: usize,
+}
+
+pub struct PcapPointerIterator {
+    pcap_reader: PcapNGReader<std::io::BufReader<std::fs::File>>,
+    pcap_offset: usize,
+}
+
+impl PcapPointerIterator {
+    pub fn new(file_path: String) -> Self {
+        Self {
+            pcap_reader: PcapNGReader::new(
+                64 * 1024 * 1024,
+                std::io::BufReader::new(
+                    std::fs::OpenOptions::new()
+                        .read(true)
+                        .open(&file_path)
+                        .unwrap(),
+                ),
+            )
+            .unwrap(),
+            pcap_offset: 0,
+        }
+    }
+}
+
+impl Iterator for PcapPointerIterator {
+    type Item = PcapPointer;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.pcap_reader.next() {
+                Ok((current_offset, block)) => {
+                    let res = match block {
+                        pcap_parser::PcapBlockOwned::NG(ng) => match ng {
+                            pcap_parser::Block::EnhancedPacket(b) => Some(PcapPointer {
+                                pcap_offset: self.pcap_offset,
+                                pcap_len: b.data.len(),
+                            }),
+                            pcap_parser::Block::SimplePacket(b) => Some(PcapPointer {
+                                pcap_offset: self.pcap_offset,
+                                pcap_len: b.data.len(),
+                            }),
+                            _ => None,
+                        },
+                        pcap_parser::PcapBlockOwned::Legacy(b) => Some(PcapPointer {
+                            pcap_offset: self.pcap_offset,
+                            pcap_len: b.data.len(),
+                        }),
+                        _ => None,
+                    };
+
+                    self.pcap_reader.consume(current_offset);
+                    self.pcap_offset += current_offset;
+
+                    if let Some(res) = res {
+                        return Some(res);
+                    }
+                }
+                Err(PcapError::Eof) => break,
+                Err(PcapError::Incomplete(_)) => {
+                    self.pcap_reader.refill().unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+
+        return None;
+    }
+}
 
 #[derive(Debug)]
 pub struct MainGui {
     pcap_path: String,
-    rows: Vec<pcap_parser_lib::PcapPointer>,
+    rows: Vec<PcapPointer>,
     expanded: std::collections::HashSet<usize>,
     pcap_file: Option<Arc<Mutex<File>>>,
 }
@@ -52,13 +127,12 @@ impl MainGui {
         }
     }
 
-    pub fn start(&mut self) -> iced::Task<Result<pcap_parser_lib::PcapPointer, String>> {
-        let (task, _) =
-            iced::Task::stream(process_pcap_gui(self.pcap_path.clone())).abortable();
+    pub fn start(&mut self) -> iced::Task<Result<PcapPointer, String>> {
+        let (task, _) = iced::Task::stream(process_pcap_gui(self.pcap_path.clone())).abortable();
         task
     }
 
-    pub fn progress(&mut self, new_progress: Result<pcap_parser_lib::PcapPointer, String>) {
+    pub fn progress(&mut self, new_progress: Result<PcapPointer, String>) {
         let new_progress = new_progress.unwrap();
         // println!("idx:{} offset:{}", self.rows.len(), new_progress.offset);
         self.rows.push(new_progress);
