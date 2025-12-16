@@ -1,9 +1,9 @@
-use iced::font;
 use iced::futures::channel::mpsc;
 use iced::futures::{SinkExt, Stream};
 use iced::stream::try_channel;
-use iced::widget::{button, center_x, column, container, scrollable, table, text, Column};
+use iced::widget::{button, column, row, scrollable, table, text};
 use iced::Font;
+use iced::{font, Length};
 pub(crate) use packet_parser::{PcapPacket, PcapPointer, PcapPointerIterator};
 use std::fs::File;
 use std::sync::{Arc, Mutex};
@@ -68,43 +68,46 @@ impl MainGui {
             })
         };
 
-        let packets: iced::Element<_> = if self.rows.is_empty() {
-            container(text("No packets loaded yet.").size(20))
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fixed(200.0))
-                .center_x(iced::Length::Fill)
-                .center_y(iced::Length::Fill)
-                .into()
-        } else {
-            let columns = [
-                table::column(bold("Length"), |packet: &PcapPacket| text(packet.len)),
-                table::column(bold("Source IP"), |packet: &PcapPacket| {
-                    text(&packet.src_ip)
-                }),
-                table::column(bold("Destination IP"), |packet: &PcapPacket| {
-                    text(&packet.dst_ip)
-                }),
-                table::column(bold("Protocol"), |packet: &PcapPacket| {
-                    text(&packet.protocol)
-                }),
-                table::column(bold("Length"), |packet: &PcapPacket| {
-                    text(packet.len.to_string())
-                }),
-            ];
-            table(columns, &self.rows).into()
-        };
-
-        let control: iced::Element<_> = button("Start processing")
-            .on_press(crate::l2::core::MainGuiMessage::Start)
+        if self.rows.is_empty() {
+            return column![
+                button("Start processing").on_press(crate::l2::core::MainGuiMessage::Start),
+                text("No packets loaded yet.").size(20)
+            ]
             .into();
+        }
 
-        column![center_x(
-            Column::new()
-                .push(control)
-                .push(scrollable(packets))
-                .spacing(10)
-                .padding(10)
-        )]
+        column![
+            row![text(format!("Processed {}", self.rows.len()))
+                .size(20)
+                .center()],
+            scrollable(
+                table(
+                    [
+                        table::column(
+                            bold("No.").width(Length::Fixed(10f32)),
+                            |packet: &PcapPacket| text(packet.idx)
+                        )
+                        .width(Length::Fixed(10f32)),
+                        table::column(bold("Source IP"), |packet: &PcapPacket| {
+                            text(&packet.src_ip)
+                        }),
+                        table::column(bold("Destination IP"), |packet: &PcapPacket| {
+                            text(&packet.dst_ip)
+                        }),
+                        table::column(bold("Protocol"), |packet: &PcapPacket| {
+                            text(&packet.protocol)
+                        }),
+                        table::column(bold("Length"), |packet: &PcapPacket| {
+                            text(packet.len.to_string())
+                        }),
+                    ],
+                    &self.rows
+                )
+                .width(Length::Fill)
+            )
+            .width(Length::Fill)
+        ]
+        .width(Length::Fill)
         .into()
     }
 }

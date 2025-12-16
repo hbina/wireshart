@@ -22,6 +22,7 @@ pub struct PcapPointer {
 }
 
 pub struct PcapPointerIterator {
+    idx: usize,
     pcap_reader: PcapNGReader<std::io::BufReader<std::fs::File>>,
     pcap_offset: usize,
 }
@@ -29,6 +30,7 @@ pub struct PcapPointerIterator {
 impl PcapPointerIterator {
     pub fn new(file_path: String) -> Self {
         Self {
+            idx: 0,
             pcap_reader: PcapNGReader::new(
                 64 * 1024 * 1024,
                 std::io::BufReader::new(
@@ -48,14 +50,13 @@ impl Iterator for PcapPointerIterator {
     type Item = PcapPointer;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut idx = 0;
         loop {
             match self.pcap_reader.next() {
                 Ok((current_offset, block)) => {
                     let res = match block {
                         pcap_parser::PcapBlockOwned::NG(ng) => match ng {
                             pcap_parser::Block::EnhancedPacket(b) => Some(PcapPointer {
-                                idx,
+                                idx: self.idx,
                                 pcap_offset: self.pcap_offset + 4 + 4 + 4 + 4 + 4 + 4 + 4,
                                 pcap_len: b.data.len(),
                                 timestamp: SystemTime::UNIX_EPOCH
@@ -64,7 +65,7 @@ impl Iterator for PcapPointerIterator {
                                     ),
                             }),
                             pcap_parser::Block::SimplePacket(b) => Some(PcapPointer {
-                                idx,
+                                idx: self.idx,
                                 pcap_offset: self.pcap_offset,
                                 pcap_len: b.data.len(),
                                 timestamp: SystemTime::now(), // Simple packets don't have a timestamp
@@ -72,7 +73,7 @@ impl Iterator for PcapPointerIterator {
                             _ => None,
                         },
                         pcap_parser::PcapBlockOwned::Legacy(b) => Some(PcapPointer {
-                            idx,
+                            idx: self.idx,
                             pcap_offset: self.pcap_offset,
                             pcap_len: b.data.len(),
                             timestamp: SystemTime::UNIX_EPOCH
@@ -83,7 +84,7 @@ impl Iterator for PcapPointerIterator {
 
                     self.pcap_reader.consume(current_offset);
                     self.pcap_offset += current_offset;
-                    idx += 1;
+                    self.idx += 1;
 
                     if let Some(res) = res {
                         return Some(res);
@@ -97,7 +98,7 @@ impl Iterator for PcapPointerIterator {
             }
         }
 
-        return None;
+        None
     }
 }
 
