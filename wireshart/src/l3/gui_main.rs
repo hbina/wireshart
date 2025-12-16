@@ -99,7 +99,8 @@ impl MainGui {
                         }),
                         table::column(bold("Length"), |packet: &PcapPacket| {
                             text(packet.len.to_string())
-                        }),
+                        })
+                        .width(Length::Fill),
                     ],
                     &self.rows
                 )
