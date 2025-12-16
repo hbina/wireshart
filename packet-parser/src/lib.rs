@@ -15,6 +15,7 @@ use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
 pub struct PcapPointer {
+    pub idx: usize,
     pub pcap_offset: usize,
     pub pcap_len: usize,
     pub timestamp: SystemTime,
@@ -47,12 +48,14 @@ impl Iterator for PcapPointerIterator {
     type Item = PcapPointer;
 
     fn next(&mut self) -> Option<Self::Item> {
+        let mut idx = 0;
         loop {
             match self.pcap_reader.next() {
                 Ok((current_offset, block)) => {
                     let res = match block {
                         pcap_parser::PcapBlockOwned::NG(ng) => match ng {
                             pcap_parser::Block::EnhancedPacket(b) => Some(PcapPointer {
+                                idx,
                                 pcap_offset: self.pcap_offset + 4 + 4 + 4 + 4 + 4 + 4 + 4,
                                 pcap_len: b.data.len(),
                                 timestamp: SystemTime::UNIX_EPOCH
@@ -61,6 +64,7 @@ impl Iterator for PcapPointerIterator {
                                     ),
                             }),
                             pcap_parser::Block::SimplePacket(b) => Some(PcapPointer {
+                                idx,
                                 pcap_offset: self.pcap_offset,
                                 pcap_len: b.data.len(),
                                 timestamp: SystemTime::now(), // Simple packets don't have a timestamp
@@ -68,6 +72,7 @@ impl Iterator for PcapPointerIterator {
                             _ => None,
                         },
                         pcap_parser::PcapBlockOwned::Legacy(b) => Some(PcapPointer {
+                            idx,
                             pcap_offset: self.pcap_offset,
                             pcap_len: b.data.len(),
                             timestamp: SystemTime::UNIX_EPOCH
@@ -78,6 +83,7 @@ impl Iterator for PcapPointerIterator {
 
                     self.pcap_reader.consume(current_offset);
                     self.pcap_offset += current_offset;
+                    idx += 1;
 
                     if let Some(res) = res {
                         return Some(res);
@@ -146,6 +152,7 @@ impl Display for PacketInfo {
 
 #[derive(Debug)]
 pub struct PcapPacket {
+    pub idx: usize,
     pub src_ip: String,
     pub dst_ip: String,
     pub protocol: String,
@@ -153,7 +160,7 @@ pub struct PcapPacket {
     pub len: usize,
 }
 
-pub fn parse_packet(data: &[u8]) -> Option<PcapPacket> {
+pub fn parse_packet(idx: usize, data: &[u8]) -> Option<PcapPacket> {
     let ethernet_packet = EthernetPacket::new(data)?;
     let (src_ip, dst_ip, protocol, info, len) = match ethernet_packet.get_ethertype() {
         EtherTypes::Ipv4 => {
@@ -234,6 +241,7 @@ pub fn parse_packet(data: &[u8]) -> Option<PcapPacket> {
     };
 
     Some(PcapPacket {
+        idx,
         src_ip,
         dst_ip,
         protocol,
@@ -254,5 +262,5 @@ pub fn parse_from_pcap_pointer(
             .unwrap();
         reader.read_exact(&mut buffer).unwrap();
     }
-    parse_packet(&buffer)
+    parse_packet(pcap_pointer.idx, &buffer)
 }

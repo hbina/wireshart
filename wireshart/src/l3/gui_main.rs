@@ -1,17 +1,17 @@
+use iced::font;
 use iced::futures::channel::mpsc;
 use iced::futures::{SinkExt, Stream};
 use iced::stream::try_channel;
-pub(crate) use packet_parser::{PcapPointer, PcapPointerIterator};
+use iced::widget::{button, center_x, column, container, scrollable, table, text, Column};
+use iced::Font;
+pub(crate) use packet_parser::{PcapPacket, PcapPointer, PcapPointerIterator};
 use std::fs::File;
 use std::sync::{Arc, Mutex};
-
-const SCROLLABLE_ID: &str = "scrollable";
 
 #[derive(Debug)]
 pub struct MainGui {
     pcap_path: String,
-    rows: Vec<PcapPointer>,
-    expanded: std::collections::HashSet<usize>,
+    rows: Vec<PcapPacket>,
     pcap_file: Option<Arc<Mutex<File>>>,
 }
 
@@ -41,14 +41,6 @@ impl MainGui {
                 self.progress(progress);
                 iced::Task::none()
             }
-            crate::l2::core::MainGuiMessage::Expand(idx) => {
-                self.expanded.insert(idx);
-                iced::Task::none()
-            }
-            crate::l2::core::MainGuiMessage::Collapse(idx) => {
-                self.expanded.remove(&idx);
-                iced::Task::none()
-            }
         }
     }
 
@@ -58,44 +50,62 @@ impl MainGui {
     }
 
     pub fn progress(&mut self, new_progress: Result<PcapPointer, String>) {
-        let new_progress = new_progress.unwrap();
-        // println!("idx:{} offset:{}", self.rows.len(), new_progress.offset);
-        self.rows.push(new_progress);
+        if let Ok(pcap_pointer) = new_progress {
+            if let Some(packet) = packet_parser::parse_from_pcap_pointer(
+                &pcap_pointer,
+                self.pcap_file.as_ref().unwrap(),
+            ) {
+                self.rows.push(packet);
+            }
+        }
     }
 
     pub fn view(&self) -> iced::Element<'_, crate::l2::core::MainGuiMessage> {
-        // let rows = Column::with_children(
-        //     self.rows
-        //         .iter()
-        //         .map(|s: &usize| text!("Block size {s}").into()),
-        // );
+        let bold = |header| {
+            text(header).font(Font {
+                weight: font::Weight::Bold,
+                ..Font::DEFAULT
+            })
+        };
 
-        let scrollable = iced::widget::scrollable(iced::widget::Column::with_children(
-            self.rows.iter().enumerate().map(|(idx, r)| {
-                super::gui_pcap::create_pcap_block_widget(
-                    idx,
-                    self.expanded.contains(&idx),
-                    r,
-                    self.pcap_file.as_ref().unwrap(),
-                )
+        let packets: iced::Element<_> = if self.rows.is_empty() {
+            container(text("No packets loaded yet.").size(20))
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fixed(200.0))
+                .center_x(iced::Length::Fill)
+                .center_y(iced::Length::Fill)
                 .into()
-            }),
-        ))
-        .direction(iced::widget::scrollable::Direction::Vertical(
-            iced::widget::scrollable::Scrollbar::new(),
-        ))
-        .width(iced::Fill)
-        .height(iced::Fill)
-        .id(SCROLLABLE_ID);
+        } else {
+            let columns = [
+                table::column(bold("Length"), |packet: &PcapPacket| text(packet.len)),
+                table::column(bold("Source IP"), |packet: &PcapPacket| {
+                    text(&packet.src_ip)
+                }),
+                table::column(bold("Destination IP"), |packet: &PcapPacket| {
+                    text(&packet.dst_ip)
+                }),
+                table::column(bold("Protocol"), |packet: &PcapPacket| {
+                    text(&packet.protocol)
+                }),
+                table::column(bold("Length"), |packet: &PcapPacket| {
+                    text(packet.len.to_string())
+                }),
+            ];
+            table(columns, &self.rows).into()
+        };
 
-        let control: iced::Element<_> = iced::widget::button("Start processing")
+        let control: iced::Element<_> = button("Start processing")
             .on_press(crate::l2::core::MainGuiMessage::Start)
             .into();
 
-        iced::widget::Column::new()
-            .push(control)
-            .push(scrollable)
-            .into()
+        column![center_x(
+            Column::new()
+                .push(control)
+                .push(scrollable(packets))
+                .spacing(10)
+                .padding(10)
+        )]
+        .into()
     }
 }
 
@@ -104,7 +114,6 @@ impl Default for MainGui {
         Self {
             pcap_path: String::from(""), // Placeholder, will be replaced by user input
             rows: Vec::default(),
-            expanded: std::collections::HashSet::default(),
             pcap_file: None,
         }
     }
